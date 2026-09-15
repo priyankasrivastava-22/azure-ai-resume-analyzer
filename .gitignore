@@ -18,6 +18,7 @@ local.settings.json
 .vscode/
 
 # Logs
+
 *.log
 
 # Testing
