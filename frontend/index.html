@@ -6,9 +6,7 @@
     <title>AI Resume Analyzer</title>
     <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
-
     <header class="header">
         <div class="container">
             <h1>AI Resume Analyzer</h1>
@@ -17,64 +15,42 @@
     </header>
 
     <main class="container">
-
         <section class="upload-section">
-
             <h2>Analyze Your Resume</h2>
+            <p class="description">Upload your resume in PDF or TXT format.</p>
 
-            <p class="description">
-                Upload your resume in PDF or TXT format.
-            </p>
-
-            <div id="dropZone" class="drop-zone">
+            <div id="uploadArea" class="drop-zone">
                 <div class="upload-icon">↑</div>
-
                 <h3>Upload your resume</h3>
-
-                <p>
-                    Drag and drop your resume here or
-                </p>
+                <p>Drag and drop your resume here or</p>
 
                 <label for="resumeFile" class="file-button">
                     Choose File
                 </label>
 
-                <input
-                    type="file"
-                    id="resumeFile"
-                    accept=".pdf,.txt"
-                    hidden
-                >
+                <input type="file" id="resumeFile" accept=".pdf,.txt" hidden>
 
-                <p id="fileName" class="file-name">
-                    No file selected
-                </p>
-
+                <p id="fileName" class="file-name">No file selected</p>
             </div>
 
-            <button id="analyzeButton" class="analyze-button" disabled>
+            <button id="analyzeBtn" class="analyze-button" disabled>
                 Analyze Resume
             </button>
 
-            <div id="loading" class="loading hidden">
+            <div id="loader" class="loading" style="display: none;">
                 <div class="spinner"></div>
                 <p>Analyzing your resume...</p>
             </div>
 
-            <div id="errorMessage" class="error hidden"></div>
-
+            <div id="errorMessage" class="error" style="display: none;"></div>
         </section>
 
-
-        <section id="resultsSection" class="results-section hidden">
-
+        <section id="results" class="results-section" style="display: none;">
             <div class="results-header">
                 <h2>Analysis Results</h2>
             </div>
 
-
             <div class="score-card">
-
                 <div>
                     <h3>Resume Score</h3>
                     <p>Overall resume quality</p>
@@ -84,64 +60,33 @@
                     <span id="score">0</span>
                     <small>/ 100</small>
                 </div>
-
             </div>
 
-
             <div class="result-card">
-
                 <h3>Candidate</h3>
-
-                <p id="candidateName">
-                    —
-                </p>
-
+                <p id="candidateName">—</p>
             </div>
 
-
             <div class="result-card">
-
                 <h3>Key Skills</h3>
-
-                <div id="skills" class="skills-container">
-                    —
-                </div>
-
+                <div id="skills" class="skills-container">—</div>
             </div>
 
-
             <div class="result-card">
-
                 <h3>Experience Summary</h3>
-
-                <p id="experience">
-                    —
-                </p>
-
+                <p id="experience">—</p>
             </div>
 
-
             <div class="result-card">
-
                 <h3>Strengths</h3>
-
-                <ul id="strengths">
-                </ul>
-
+                <ul id="strengths"></ul>
             </div>
-
 
             <div class="result-card">
-
                 <h3>Recommendations</h3>
-
-                <ul id="recommendations">
-                </ul>
-
+                <ul id="recommendations"></ul>
             </div>
-
         </section>
-
     </main>
 
     <footer>
@@ -149,6 +94,5 @@
     </footer>
 
     <script src="script.js"></script>
-
 </body>
 </html>

@@ -1,129 +1,120 @@
-const fileInput = document.getElementById("resumeFile");
-const dropZone = document.getElementById("dropZone");
+const uploadArea = document.getElementById("uploadArea");
+const resumeFile = document.getElementById("resumeFile");
 const fileName = document.getElementById("fileName");
-const analyzeButton = document.getElementById("analyzeButton");
-
-const loading = document.getElementById("loading");
+const analyzeBtn = document.getElementById("analyzeBtn");
+const loader = document.getElementById("loader");
 const errorMessage = document.getElementById("errorMessage");
-const resultsSection = document.getElementById("resultsSection");
+const results = document.getElementById("results");
 
 let selectedFile = null;
 
+uploadArea.addEventListener("click", () => {
+    resumeFile.click();
+});
 
-// File selection
-fileInput.addEventListener("change", function () {
-    if (fileInput.files.length > 0) {
-        handleFile(fileInput.files[0]);
+resumeFile.addEventListener("change", () => {
+    if (resumeFile.files.length > 0) {
+        selectedFile = resumeFile.files[0];
+
+        fileName.textContent = selectedFile.name;
+        errorMessage.textContent = "";
+        errorMessage.style.display = "none";
+
+        analyzeBtn.disabled = false;
     }
 });
 
-
-// Drag and drop
-dropZone.addEventListener("dragover", function (event) {
+uploadArea.addEventListener("dragover", (event) => {
     event.preventDefault();
-    dropZone.classList.add("dragover");
+    uploadArea.classList.add("dragover");
 });
 
-dropZone.addEventListener("dragleave", function () {
-    dropZone.classList.remove("dragover");
+uploadArea.addEventListener("dragleave", () => {
+    uploadArea.classList.remove("dragover");
 });
 
-dropZone.addEventListener("drop", function (event) {
+uploadArea.addEventListener("drop", (event) => {
     event.preventDefault();
-
-    dropZone.classList.remove("dragover");
+    uploadArea.classList.remove("dragover");
 
     if (event.dataTransfer.files.length > 0) {
-        handleFile(event.dataTransfer.files[0]);
+        selectedFile = event.dataTransfer.files[0];
+
+        fileName.textContent = selectedFile.name;
+        errorMessage.textContent = "";
+        errorMessage.style.display = "none";
+
+        analyzeBtn.disabled = false;
     }
 });
 
-
-// Validate selected file
-function handleFile(file) {
-
-    const allowedTypes = [
-        "application/pdf",
-        "text/plain"
-    ];
-
-    const maxSize = 5 * 1024 * 1024;
-
-    errorMessage.classList.add("hidden");
-
-    if (!allowedTypes.includes(file.type)) {
-        showError("Please upload a PDF or TXT file.");
-        return;
-    }
-
-    if (file.size > maxSize) {
-        showError("File size must be less than 5 MB.");
-        return;
-    }
-
-    selectedFile = file;
-
-    fileName.textContent = file.name;
-
-    analyzeButton.disabled = false;
-}
-
-
-// Analyze button
-analyzeButton.addEventListener("click", async function () {
-
+analyzeBtn.addEventListener("click", async () => {
     if (!selectedFile) {
-        showError("Please select a resume first.");
+        showError("Please select a PDF or TXT resume.");
         return;
     }
 
-    loading.classList.remove("hidden");
-    errorMessage.classList.add("hidden");
-    resultsSection.classList.add("hidden");
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    loader.style.display = "block";
+    errorMessage.style.display = "none";
+    results.style.display = "none";
+    analyzeBtn.disabled = true;
 
     try {
+        const response = await fetch("http://localhost:7071/api/analyze", {
+            method: "POST",
+            body: formData
+        });
 
-        const text = await extractText(selectedFile);
+        const data = await response.json();
 
-        if (!text.trim()) {
-            throw new Error("Could not extract text from the resume.");
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || "Resume analysis failed.");
         }
 
-        // Backend will be connected here later.
-        console.log("Extracted resume text:", text);
-
-        showError(
-            "Frontend is ready. Backend API will be connected next."
-        );
+        displayResults(data);
 
     } catch (error) {
-
         showError(error.message);
 
     } finally {
-
-        loading.classList.add("hidden");
-
+        loader.style.display = "none";
+        analyzeBtn.disabled = false;
     }
 });
 
+function displayResults(data) {
+    const candidate = data.candidate;
+    const analysis = data.analysis;
 
-// Extract text from TXT files
-async function extractText(file) {
+    document.getElementById("candidateName").textContent =
+        candidate.name;
 
-    if (file.type === "text/plain") {
-        return await file.text();
-    }
+    document.getElementById("score").textContent =
+        analysis.score;
 
-    // PDF extraction will be handled by the backend.
-    return "PDF file selected. Backend PDF extraction will process this file.";
+    document.getElementById("skills").textContent =
+        analysis.skills.join(", ");
+
+    document.getElementById("experience").textContent =
+        analysis.experience_summary;
+
+    document.getElementById("strengths").innerHTML =
+        analysis.strengths
+            .map(item => `<li>${item}</li>`)
+            .join("");
+
+    document.getElementById("recommendations").innerHTML =
+        analysis.recommendations
+            .map(item => `<li>${item}</li>`)
+            .join("");
+
+    results.style.display = "block";
 }
 
-
-// Display error
 function showError(message) {
-
     errorMessage.textContent = message;
-    errorMessage.classList.remove("hidden");
-
+    errorMessage.style.display = "block";
 }
