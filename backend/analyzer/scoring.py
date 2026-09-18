@@ -1,105 +1,81 @@
 import re
 
+
 SKILL_EQUIVALENTS = {
     "kql": {"kusto"},
     "kusto": {"kql"},
     "servicenow": {"service now"},
     "power bi": {"powerbi"},
     "microsoft fabric": {"ms fabric"},
-    "llm": {
-        "large language model",
-        "large language models",
-    },
+    "llm": {"large language model", "large language models"},
     "ai": {"artificial intelligence"},
     "ml": {"machine learning"},
     "mcp": {"model context protocol"},
-    "node.js": {
-        "node",
-        "nodejs",
-    },
+    "node.js": {"node", "nodejs"},
     "rest api": {"restful api"},
 }
 
 
+# Return unique items while preserving their original order.
 def unique(items):
     result = []
-
     for item in items or []:
         if item not in result:
             result.append(item)
-
     return result
 
 
+# Normalize text for consistent matching.
 def normalize(value):
     return re.sub(r"\s+", " ", str(value or "").lower()).strip()
 
 
+# Calculate a percentage score when a measurable total exists.
 def percentage(matched, total):
     if total <= 0:
         return None
-
     return round((matched / total) * 100)
 
 
+# Match a term safely inside text including technical terms such as C# and C++.
 def term_in_text(text, term):
     text = normalize(text)
     term = normalize(term)
-
     if not term:
         return False
-
-    # Use custom boundaries so technical terms such as C# and C++ match safely.
     escaped = re.escape(term)
-
-    return (
-        re.search(
-            rf"(?<![a-z0-9]){escaped}(?![a-z0-9])",
-            text,
-            flags=re.IGNORECASE,
-        )
-        is not None
-    )
+    return re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text, flags=re.IGNORECASE) is not None
 
 
+# Build a normalized set of skills detected in the resume.
 def build_resume_skill_set(resume):
-    skills = resume.get("skills", [])
-
-    return {
-        normalize(skill)
-        for skill in skills
-        if skill
-    }
+    return {normalize(skill) for skill in resume.get("skills", []) if skill}
 
 
+# Match a required skill using exact names and controlled equivalents.
 def skill_matches(resume_skills, required_skill):
     target = normalize(required_skill)
-
     if target in resume_skills:
         return True
-
     equivalents = SKILL_EQUIVALENTS.get(target, set())
-
     return bool(equivalents.intersection(resume_skills))
 
 
+# Compare required and preferred JD skills against resume skills.
 def match_skills(resume, jd):
     resume_skills = build_resume_skill_set(resume)
-
     required = unique(jd.get("required_skills", []))
     preferred = unique(jd.get("preferred_skills", []))
-
     required_matched = []
     required_missing = []
+    preferred_matched = []
+    preferred_missing = []
 
     for skill in required:
         if skill_matches(resume_skills, skill):
             required_matched.append(skill)
         else:
             required_missing.append(skill)
-
-    preferred_matched = []
-    preferred_missing = []
 
     for skill in preferred:
         if skill_matches(resume_skills, skill):
@@ -108,125 +84,64 @@ def match_skills(resume, jd):
             preferred_missing.append(skill)
 
     return {
+        "required": required,
         "required_matched": required_matched,
         "required_missing": required_missing,
-        "required_score": percentage(
-            len(required_matched),
-            len(required),
-        ),
+        "required_score": percentage(len(required_matched), len(required)),
+        "preferred": preferred,
         "preferred_matched": preferred_matched,
         "preferred_missing": preferred_missing,
-        "preferred_score": percentage(
-            len(preferred_matched),
-            len(preferred),
-        ),
+        "preferred_score": percentage(len(preferred_matched), len(preferred)),
     }
 
 
+# Evaluate JD requirements where any one listed skill can satisfy the requirement.
 def match_alternative_groups(resume, jd):
     resume_skills = build_resume_skill_set(resume)
     results = []
 
     for group in jd.get("alternative_groups", []):
         options = unique(group.get("options", []))
-
-        matched = [
-            option
-            for option in options
-            if skill_matches(resume_skills, option)
-        ]
-
-        results.append(
-            {
-                "options": options,
-                "matched": matched,
-                "satisfied": bool(matched),
-                "source": group.get("source", ""),
-            }
-        )
+        matched = [option for option in options if skill_matches(resume_skills, option)]
+        results.append({
+            "options": options,
+            "matched": matched,
+            "satisfied": bool(matched),
+            "source": group.get("source", ""),
+        })
 
     return results
 
 
+# Match broader engineering requirements using controlled aliases.
 def match_general_requirements(resume, resume_text, jd):
     text = normalize(resume_text)
     requirements = unique(jd.get("general_requirements", []))
 
     aliases = {
-        "incident management": [
-            "incident management",
-            "incident response",
-            "incident handling",
-        ],
-        "monitoring": [
-            "monitoring",
-            "monitor",
-            "application monitoring",
-        ],
-        "alerting": [
-            "alerting",
-            "alerts",
-        ],
-        "observability": [
-            "observability",
-        ],
-        "on-call": [
-            "on-call",
-            "on call",
-        ],
-        "log analysis": [
-            "log analysis",
-            "log traversal",
-            "log investigation",
-            "application logs",
-        ],
-        "production troubleshooting": [
-            "production troubleshooting",
-            "production support",
-            "production issues",
-            "troubleshooting",
-        ],
-        "root cause analysis": [
-            "root cause analysis",
-            "rca",
-        ],
-        "automation": [
-            "automation",
-            "automated",
-            "automate",
-        ],
-        "cloud services": [
-            "cloud services",
-            "cloud infrastructure",
-            "cloud platform",
-        ],
-        "continuous improvement": [
-            "continuous improvement",
-        ],
-        "customer communication": [
-            "customer communication",
-            "customer-facing",
-        ],
-        "escalation": [
-            "escalation",
-            "escalate",
-        ],
-        "SLA management": [
-            "sla",
-            "service level agreement",
-        ],
+        "incident management": ["incident management", "incident response", "incident handling"],
+        "monitoring": ["monitoring", "monitor", "application monitoring"],
+        "alerting": ["alerting", "alerts"],
+        "observability": ["observability"],
+        "on-call": ["on-call", "on call"],
+        "log analysis": ["log analysis", "log traversal", "log investigation", "application logs"],
+        "production troubleshooting": ["production troubleshooting", "production support", "production issues", "troubleshooting"],
+        "root cause analysis": ["root cause analysis", "rca"],
+        "automation": ["automation", "automated", "automate"],
+        "cloud services": ["cloud services", "cloud infrastructure", "cloud platform"],
+        "continuous improvement": ["continuous improvement"],
+        "customer communication": ["customer communication", "customer-facing"],
+        "escalation": ["escalation", "escalate"],
+        "sla management": ["sla", "service level agreement"],
     }
 
     matched = []
     missing = []
 
     for requirement in requirements:
-        candidates = aliases.get(requirement, [requirement])
-
-        found = any(
-            term_in_text(text, candidate)
-            for candidate in candidates
-        )
+        normalized_requirement = normalize(requirement)
+        candidates = aliases.get(normalized_requirement, [requirement])
+        found = any(term_in_text(text, candidate) for candidate in candidates)
 
         if found:
             matched.append(requirement)
@@ -236,16 +151,14 @@ def match_general_requirements(resume, resume_text, jd):
     return {
         "required_matched": matched,
         "required_missing": missing,
-        "required_score": percentage(
-            len(matched),
-            len(requirements),
-        ),
+        "required_score": percentage(len(matched), len(requirements)),
         "preferred_matched": [],
         "preferred_missing": [],
         "preferred_score": None,
     }
 
 
+# Compare detected resume experience with the JD minimum requirement.
 def match_experience(resume, jd):
     resume_years = resume.get("experience_years")
     required_years = jd.get("required_years")
@@ -253,10 +166,7 @@ def match_experience(resume, jd):
     if required_years is None:
         return {
             "score": None,
-            "status": (
-                "Experience requirement could not be determined "
-                "from the job description."
-            ),
+            "status": "Experience requirement could not be determined from the job description.",
             "resume_years": resume_years,
             "required_years": None,
             "confidence": "low",
@@ -273,32 +183,21 @@ def match_experience(resume, jd):
 
     if resume_years >= required_years:
         score = 100
-        status = (
-            f"Meets the minimum experience requirement "
-            f"({resume_years:.2f} years detected vs "
-            f"{required_years:.1f}+ required)."
-        )
+        status = f"Meets the minimum experience requirement ({resume_years:.2f} years detected vs {required_years:.1f}+ required)."
     else:
-        score = round((resume_years / required_years) * 100)
-        score = max(0, min(score, 99))
-        status = (
-            f"Below the minimum experience requirement "
-            f"({resume_years:.2f} years detected vs "
-            f"{required_years:.1f}+ required)."
-        )
+        score = max(0, min(round((resume_years / required_years) * 100), 99))
+        status = f"Below the minimum experience requirement ({resume_years:.2f} years detected vs {required_years:.1f}+ required)."
 
     return {
         "score": score,
         "status": status,
         "resume_years": resume_years,
         "required_years": required_years,
-        "confidence": resume.get(
-            "experience_confidence",
-            "low",
-        ),
+        "confidence": resume.get("experience_confidence", "low"),
     }
 
 
+# Compare detected resume roles with roles identified in the JD.
 def match_roles(resume, jd):
     resume_roles = unique(resume.get("roles", []))
     jd_roles = unique(jd.get("roles", []))
@@ -312,21 +211,9 @@ def match_roles(resume, jd):
             "jd_roles": [],
         }
 
-    matched = [
-        role
-        for role in jd_roles
-        if role in resume_roles
-    ]
-
-    score = percentage(
-        len(matched),
-        len(jd_roles),
-    )
-
-    if matched:
-        status = "Role alignment identified: " + ", ".join(matched) + "."
-    else:
-        status = "No direct role alignment was identified."
+    matched = [role for role in jd_roles if role in resume_roles]
+    score = percentage(len(matched), len(jd_roles))
+    status = "Role alignment identified: " + ", ".join(matched) + "." if matched else "No direct role alignment was identified."
 
     return {
         "score": score,
@@ -337,69 +224,45 @@ def match_roles(resume, jd):
     }
 
 
+# Measure how completely each required JD responsibility is supported by the resume.
 def keyword_responsibility_match(resume_text, jd):
     resume_text = normalize(resume_text)
-    lines = jd.get("requirement_lines", [])
-
-    required_lines = [
-        item
-        for item in lines
-        if item.get("type") == "required"
-    ]
+    required_lines = [item for item in jd.get("requirement_lines", []) if item.get("type") == "required"]
 
     if not required_lines:
-        return {
-            "score": None,
-            "matched": [],
-            "missing": [],
-        }
+        return {"score": None, "matched": [], "partial": [], "missing": []}
 
     matched = []
+    partial = []
     missing = []
+    line_scores = []
 
     for item in required_lines:
         line = item.get("text", "")
-
-        signals = unique(
-            item.get("skills", [])
-            + item.get("general_requirements", [])
-            + item.get("roles", [])
-        )
+        signals = unique(item.get("skills", []) + item.get("general_requirements", []) + item.get("roles", []))
 
         if not signals:
             continue
 
-        found = any(
-            term_in_text(resume_text, signal)
-            for signal in signals
-        )
+        matched_signals = [signal for signal in signals if term_in_text(resume_text, signal)]
+        coverage = round((len(matched_signals) / len(signals)) * 100)
+        line_scores.append(coverage)
 
-        if found:
+        if coverage >= 70:
             matched.append(line)
+        elif coverage > 0:
+            partial.append(line)
         else:
             missing.append(line)
 
-    total = len(matched + missing)
-
-    return {
-        "score": percentage(
-            len(matched),
-            total,
-        ),
-        "matched": matched,
-        "missing": missing,
-    }
+    score = round(sum(line_scores) / len(line_scores)) if line_scores else None
+    return {"score": score, "matched": matched, "partial": partial, "missing": missing}
 
 
+# Compare resume education with education requirements detected in the JD.
 def education_match(resume, jd):
-    resume_education = {
-        normalize(item)
-        for item in resume.get("education", [])
-    }
-
-    required_education = unique(
-        jd.get("education", [])
-    )
+    resume_education = {normalize(item) for item in resume.get("education", [])}
+    required_education = unique(jd.get("education", []))
 
     if not required_education:
         return None
@@ -413,114 +276,74 @@ def education_match(resume, jd):
             matched.append(education)
             continue
 
-        if (
-            "bachelor" in target
-            and any(
-                value in resume_education
-                for value in [
-                    "bca",
-                    "b.tech",
-                    "be",
-                    "bachelor's degree",
-                ]
-            )
-        ):
+        if "bachelor" in target and any(value in resume_education for value in ["bca", "b.tech", "be", "bachelor's degree"]):
             matched.append(education)
             continue
 
-        if (
-            "master" in target
-            and any(
-                value in resume_education
-                for value in [
-                    "mca",
-                    "master's degree",
-                ]
-            )
-        ):
+        if "master" in target and any(value in resume_education for value in ["mca", "master's degree"]):
             matched.append(education)
 
-    return percentage(
-        len(matched),
-        len(required_education),
-    )
+    return percentage(len(matched), len(required_education))
 
 
+# Remove alternative skills from critical gaps when an accepted alternative is satisfied.
 def build_skill_gap_lists(skill_result, alternative_results):
-    required_missing = list(
-        skill_result["required_missing"]
-    )
-    preferred_missing = list(
-        skill_result["preferred_missing"]
-    )
-
-    # Exclude options from critical gaps when an alternative group is satisfied.
+    required_missing = list(skill_result["required_missing"])
+    preferred_missing = list(skill_result["preferred_missing"])
     satisfied_options = set()
 
     for group in alternative_results:
         if group.get("satisfied"):
             for option in group.get("options", []):
-                satisfied_options.add(
-                    normalize(option)
-                )
+                satisfied_options.add(normalize(option))
 
-    required_missing = [
-        skill
-        for skill in required_missing
-        if normalize(skill) not in satisfied_options
-    ]
-
+    required_missing = [skill for skill in required_missing if normalize(skill) not in satisfied_options]
     critical_missing = list(required_missing)
 
-    return (
-        unique(required_missing),
-        unique(preferred_missing),
-        unique(critical_missing),
+    return unique(required_missing), unique(preferred_missing), unique(critical_missing)
+
+
+# Build simple human-readable explanations for JD match scores.
+def build_score_explanations(required_skill_score, general_score, experience_result, keyword_result, role_result, education_result, alternative_results):
+    explanations = {}
+
+    explanations["required_skills"] = f"Matched {required_skill_score}% of explicitly required skills." if required_skill_score is not None else "No explicit required skills were detected."
+
+    explanations["general_requirements"] = f"Matched {general_score}% of general job requirements." if general_score is not None else "No general job requirements were detected."
+
+    explanations["experience"] = experience_result.get("status", "Experience could not be evaluated.")
+
+    explanations["keyword_responsibility"] = (
+        f"Responsibility coverage score is {keyword_result['score']}%, based on full and partial requirement-line matches."
+        if keyword_result.get("score") is not None
+        else "No measurable required responsibility lines were detected."
     )
 
+    explanations["role_alignment"] = role_result.get("status", "Role alignment could not be evaluated.")
 
+    explanations["education"] = f"Education requirement match score is {education_result}%." if education_result is not None else "No education requirement was detected."
+
+    if alternative_results:
+        satisfied = sum(1 for item in alternative_results if item.get("satisfied"))
+        explanations["alternative_requirements"] = f"Satisfied {satisfied} of {len(alternative_results)} alternative requirement groups."
+    else:
+        explanations["alternative_requirements"] = "No alternative requirement groups were detected."
+
+    return explanations
+
+
+# Calculate the overall resume-to-JD match using weighted explainable components.
 def calculate_jd_match(resume, resume_text, jd):
-    # Calculate each independent matching component.
     skill_result = match_skills(resume, jd)
-    alternative_results = match_alternative_groups(
-        resume,
-        jd,
-    )
-    general_result = match_general_requirements(
-        resume,
-        resume_text,
-        jd,
-    )
-    experience_result = match_experience(
-        resume,
-        jd,
-    )
-    role_result = match_roles(
-        resume,
-        jd,
-    )
-    keyword_result = keyword_responsibility_match(
-        resume_text,
-        jd,
-    )
-    education_result = education_match(
-        resume,
-        jd,
-    )
+    alternative_results = match_alternative_groups(resume, jd)
+    general_result = match_general_requirements(resume, resume_text, jd)
+    experience_result = match_experience(resume, jd)
+    role_result = match_roles(resume, jd)
+    keyword_result = keyword_responsibility_match(resume_text, jd)
+    education_result = education_match(resume, jd)
 
-    (
-        missing_skills,
-        preferred_missing_skills,
-        critical_missing_skills,
-    ) = build_skill_gap_lists(
-        skill_result,
-        alternative_results,
-    )
-
-    matched_skills = unique(
-        skill_result["required_matched"]
-        + skill_result["preferred_matched"]
-    )
+    missing_skills, preferred_missing_skills, critical_missing_skills = build_skill_gap_lists(skill_result, alternative_results)
+    matched_skills = unique(skill_result["required_matched"] + skill_result["preferred_matched"])
 
     required_skill_score = skill_result["required_score"]
     general_score = general_result["required_score"]
@@ -529,68 +352,48 @@ def calculate_jd_match(resume, resume_text, jd):
     keyword_score = keyword_result["score"]
     preferred_score = skill_result["preferred_score"]
 
-    alternative_score = percentage(
-        sum(
-            1
-            for item in alternative_results
-            if item.get("satisfied")
-        ),
-        len(alternative_results),
-    )
+    alternative_score = percentage(sum(1 for item in alternative_results if item.get("satisfied")), len(alternative_results))
 
-    # Build only the score components that are available.
+    # Build explanations for each scoring component.
+    score_explanations = build_score_explanations(required_skill_score, general_score, experience_result, keyword_result, role_result, education_result, alternative_results)
+
+    # Build only scoring components that are actually available.
     components = []
 
     def add_component(value, weight):
         if value is not None:
-            components.append(
-                (value, weight)
-            )
+            components.append((value, weight))
 
-    add_component(required_skill_score, 30)
+    # Weight core requirements more heavily than supporting indicators.
+    add_component(required_skill_score, 35)
     add_component(general_score, 20)
     add_component(experience_score, 20)
     add_component(keyword_score, 15)
     add_component(role_score, 10)
 
+    # Include education only when the JD contains an education requirement.
     if education_result is not None:
-        add_component(
-            education_result,
-            5,
-        )
+        add_component(education_result, 5)
 
-    # Alternative requirements contribute modestly to avoid double-counting.
+    # Include alternative requirements without giving them excessive influence.
     if alternative_score is not None:
-        add_component(
-            alternative_score,
-            5,
-        )
+        add_component(alternative_score, 5)
 
-    # Calculate the weighted overall JD match score.
+    # Calculate the normalized weighted JD match score.
     if components:
-        weighted_sum = sum(
-            value * weight
-            for value, weight in components
-        )
-        weight_sum = sum(
-            weight
-            for _, weight in components
-        )
-        match_score = round(
-            weighted_sum / weight_sum
-        )
+        weighted_sum = sum(value * weight for value, weight in components)
+        weight_sum = sum(weight for _, weight in components)
+        match_score = round(weighted_sum / weight_sum)
     else:
         match_score = 0
 
-    # Prevent a perfect score when an explicit experience minimum is missed.
-    if (
-        experience_score is not None
-        and experience_score < 100
-    ):
-        match_score = min(
-            match_score,
-            99,
-        )
+    # Prevent a perfect result when an explicit experience requirement is missed.
+    if experience_score is not None and experience_score < 100:
+        match_score = min(match_score, 99)
+
+    # Prevent strong overall scores when fewer than half of required skills match.
+    if required_skill_score is not None and required_skill_score < 50:
+        match_score = min(match_score, 69)
 
     return {
         "match_score": match_score,
@@ -604,12 +407,21 @@ def calculate_jd_match(resume, resume_text, jd):
             "education": education_result,
             "alternative_requirements": alternative_score,
         },
-        "required_skills": skill_result[
-            "required_matched"
-        ],
-        "preferred_skills": skill_result[
-            "preferred_matched"
-        ],
+        "score_explanations": score_explanations,
+        "required_skill_breakdown": {
+            "total": skill_result["required"],
+            "matched": skill_result["required_matched"],
+            "missing": missing_skills,
+            "score": required_skill_score,
+        },
+        "preferred_skill_breakdown": {
+            "total": skill_result["preferred"],
+            "matched": skill_result["preferred_matched"],
+            "missing": preferred_missing_skills,
+            "score": preferred_score,
+        },
+        "required_skills": skill_result["required_matched"],
+        "preferred_skills": skill_result["preferred_matched"],
         "matched_skills": matched_skills,
         "missing_skills": missing_skills,
         "critical_missing_skills": critical_missing_skills,
@@ -617,144 +429,72 @@ def calculate_jd_match(resume, resume_text, jd):
         "experience_match": experience_result,
         "role_match": role_result,
         "keyword_match": keyword_score,
+        "keyword_match_details": keyword_result,
         "education_match": education_result,
         "general_requirements": general_result,
         "alternative_requirements": alternative_results,
     }
 
 
-def calculate_resume_quality(
-    resume,
-    ats=None,
-    sections=None,
-):
+# Calculate independent resume-quality dimensions before combining them.
+def calculate_resume_quality(resume, ats=None, sections=None):
     ats = ats or {}
     sections = sections or {}
+    existing_quality = resume.get("experience_quality", {})
 
-    existing_quality = resume.get(
-        "experience_quality",
-        {},
-    )
-
-    # Score resume content completeness.
+    # Score completeness of important resume information.
     content_score = 0
-
     if resume.get("name"):
         content_score += 2
-
     if resume.get("email"):
         content_score += 2
-
     if resume.get("phone"):
         content_score += 2
-
     if sections.get("summary"):
         content_score += 2
-
     if sections.get("skills"):
         content_score += 2
-
     if sections.get("experience"):
         content_score += 3
-
     if sections.get("education"):
         content_score += 2
-
     if sections.get("projects"):
         content_score += 2
 
-    # Calculate experience, skills, achievement, and ATS contributions.
-    experience_quality = existing_quality.get(
-        "quality_score",
-        0,
-    )
-
+    # Score experience quality, skill coverage and measurable achievements.
+    experience_quality = existing_quality.get("quality_score", 0)
     skills = resume.get("skills", [])
-    skill_score = min(
-        len(skills) * 1.5,
-        15,
-    )
+    skill_score = min(len(skills) * 1.5, 15)
+    quantified_ratio = existing_quality.get("quantified_ratio", 0)
+    action_ratio = existing_quality.get("action_verb_ratio", 0)
+    achievement_score = min((quantified_ratio * 0.08) + (action_ratio * 0.02), 10)
 
-    quantified_ratio = existing_quality.get(
-        "quantified_ratio",
-        0,
-    )
-    action_ratio = existing_quality.get(
-        "action_verb_ratio",
-        0,
-    )
-
-    achievement_score = min(
-        (
-            quantified_ratio * 0.08
-            + action_ratio * 0.02
-        ),
-        10,
-    )
-
+    # Include the ATS compatibility contribution.
     ats_score = ats.get("score")
-
     if ats_score is None:
         ats_score = 0
 
-    # Measure how many standard resume sections were detected.
-    standard_sections = [
-        "summary",
-        "skills",
-        "experience",
-        "education",
-        "projects",
-    ]
+    # Measure the number of useful standard sections actually detected.
+    standard_sections = ["summary", "skills", "experience", "education", "projects"]
+    detected_sections = sum(1 for section in standard_sections if sections.get(section))
+    structure_score = min(detected_sections * 2, 10)
 
-    detected_sections = sum(
-        1
-        for section in standard_sections
-        if sections.get(section)
-    )
-
-    structure_score = min(
-        detected_sections * 2,
-        10,
-    )
-
-    # Reduce language quality when ATS issues are detected.
+    # Reduce language quality when extraction or ATS issues are detected.
     language_score = 10
     issues = ats.get("issues", [])
-
     if issues:
-        language_score = max(
-            0,
-            language_score
-            - min(
-                len(issues),
-                5,
-            ),
-        )
+        language_score = max(0, language_score - min(len(issues), 5))
 
+    # Build the transparent resume-quality score breakdown.
     breakdown = {
         "content_completeness": content_score,
-        "experience_quality": round(
-            experience_quality * 0.20
-        ),
+        "experience_quality": round(experience_quality * 0.20),
         "skills": round(skill_score),
-        "achievement_impact": round(
-            achievement_score
-        ),
-        "ats_compatibility": round(
-            ats_score * 0.15
-        ),
+        "achievement_impact": round(achievement_score),
+        "ats_compatibility": round(ats_score * 0.15),
         "structure_clarity": structure_score,
         "language_quality": language_score,
     }
 
-    score = min(
-        round(
-            sum(breakdown.values())
-        ),
-        99,
-    )
-
-    return {
-        "score": score,
-        "breakdown": breakdown,
-    }
+    score = min(round(sum(breakdown.values())), 99)
+    return {"score": score, "breakdown": breakdown}

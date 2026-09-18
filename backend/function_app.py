@@ -2,7 +2,7 @@ import json
 import logging
 
 import azure.functions as func
-
+from analyzer.cosmos_storage import build_analysis_document, save_analysis
 from analyzer.ats_analyzer import analyze_ats
 from analyzer.azure_language import analyze_text_with_azure
 from analyzer.jd_analyzer import analyze_jd
@@ -130,6 +130,14 @@ def safe_azure_analysis(text: str) -> dict:
             "entities": [],
         }
 
+# Save analysis history without allowing Cosmos errors to break analysis.
+def safe_save_analysis(filename, resume, resume_quality, ats, jd, jd_match, recommendations):
+    try:
+        document = build_analysis_document(filename, resume, resume_quality, ats, jd, jd_match, recommendations)
+        return save_analysis(document)
+    except Exception:
+        logging.exception("Cosmos DB analysis save failed.")
+        return None
 
 # Analyze the uploaded resume against the supplied job description.
 @app.route(route="analyze", methods=["POST"])
@@ -184,100 +192,56 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
         jd_azure = safe_azure_analysis(job_description)
 
         # Calculate deterministic resume-to-job matching.
-        jd_match = calculate_jd_match(
-            resume,
-            resume_text,
-            jd,
-        )
+        jd_match = calculate_jd_match(resume, resume_text, jd)
 
         # Generate recommendations based on missing job requirements.
-        jd_recommendations = generate_jd_recommendations(
-            resume,
-            jd,
-            jd_match,
-        )
+        jd_recommendations = generate_jd_recommendations(resume, jd, jd_match)
+
+        # Save the completed analysis and capture its persistent ID.
+        saved_analysis = safe_save_analysis(filename, resume, resume_quality, ats, jd, jd_match, jd_recommendations)
+        analysis_id = saved_analysis.get("id") if saved_analysis else None
 
         # Build the final API response.
         response = {
             "success": True,
-            "candidate": {
-                "name": resume.get("name"),
-            },
+            "analysis_id": analysis_id,
+            "candidate": {"name": resume.get("name")},
             "analysis": {
                 "resume_score": resume_quality,
                 "quality_breakdown": quality_breakdown,
                 "skills": resume.get("skills", []),
-                "experience_summary": resume.get(
-                    "experience_summary"
-                ),
-                "experience_years": resume.get(
-                    "experience_years"
-                ),
+                "experience_summary": resume.get("experience_summary"),
+                "experience_years": resume.get("experience_years"),
                 "education": resume.get("education", []),
                 "sections": sections,
-                "contact": {
-                    "email": resume.get("email"),
-                    "phone": resume.get("phone"),
-                },
+                "contact": {"email": resume.get("email"), "phone": resume.get("phone")},
                 "roles": resume.get("roles", []),
-                "experience_quality": resume.get(
-                    "experience_quality",
-                    {},
-                ),
+                "experience_quality": resume.get("experience_quality", {}),
                 "strengths": resume_strengths,
                 "recommendations": resume_recommendations,
                 "ats": ats,
             },
             "job_match": {
-                "match_score": jd_match.get("match_score"),
-                "breakdown": jd_match.get("breakdown", {}),
+                "match_score": jd_match["match_score"],
+                "breakdown": jd_match["breakdown"],
+                "required_skill_breakdown": jd_match.get("required_skill_breakdown", {}),
+                "preferred_skill_breakdown": jd_match.get("preferred_skill_breakdown", {}),
                 "jd_skills": jd.get("skills", []),
-                "matched_skills": jd_match.get(
-                    "matched_skills",
-                    [],
-                ),
-                "missing_skills": jd_match.get(
-                    "missing_skills",
-                    [],
-                ),
-                "critical_missing_skills": jd_match.get(
-                    "critical_missing_skills",
-                    [],
-                ),
-                "preferred_missing_skills": jd_match.get(
-                    "preferred_missing_skills",
-                    [],
-                ),
-                "experience_match": jd_match.get(
-                    "experience_match",
-                    {},
-                ),
-                "role_match": jd_match.get(
-                    "role_match",
-                    {},
-                ),
-                "keyword_match": jd_match.get(
-                    "keyword_match",
-                    0,
-                ),
-                "education_match": jd_match.get(
-                    "education_match",
-                    0,
-                ),
-                "general_requirements": jd_match.get(
-                    "general_requirements",
-                    {},
-                ),
-                "alternative_requirements": jd_match.get(
-                    "alternative_requirements",
-                    [],
-                ),
+                "matched_skills": jd_match["matched_skills"],
+                "missing_skills": jd_match["missing_skills"],
+                "critical_missing_skills": jd_match["critical_missing_skills"],
+                "preferred_missing_skills": jd_match["preferred_missing_skills"],
+                "experience_match": jd_match["experience_match"],
+                "role_match": jd_match["role_match"],
+                "keyword_match": jd_match["keyword_match"],
+                "keyword_match_details": jd_match.get("keyword_match_details", {}),
+                "education_match": jd_match["education_match"],
+                "general_requirements": jd_match["general_requirements"],
+                "alternative_requirements": jd_match["alternative_requirements"],
+                "score_explanations": jd_match.get("score_explanations", {}),
                 "recommendations": jd_recommendations,
-            },
-            "azure_ai": {
-                "resume": resume_azure,
-                "job_description": jd_azure,
-            },
+                },
+            "azure_ai": {"resume": resume_azure, "job_description": jd_azure,},
         }
 
         return json_response(response)
