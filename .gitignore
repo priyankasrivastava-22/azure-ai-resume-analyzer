@@ -24,3 +24,6 @@ local.settings.json
 # Testing
 .pytest_cache/
 .coverage
+
+.docs
+docs
