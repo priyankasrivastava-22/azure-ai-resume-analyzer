@@ -1,22 +1,22 @@
 import json
 import logging
+from pathlib import Path
 
 import azure.functions as func
-from analyzer.cosmos_storage import build_analysis_document, save_analysis
+
 from analyzer.ats_analyzer import analyze_ats
 from analyzer.azure_language import analyze_text_with_azure
+from analyzer.cosmos_storage import build_analysis_document, save_analysis
 from analyzer.jd_analyzer import analyze_jd
 from analyzer.parser import extract_sections, extract_text
-from analyzer.recommendations import (
-    generate_jd_recommendations,
-    generate_resume_recommendations,
-)
+from analyzer.recommendations import generate_jd_recommendations, generate_resume_recommendations
 from analyzer.resume_analyzer import analyze_resume
 from analyzer.scoring import calculate_jd_match, calculate_resume_quality
 
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 MIN_JOB_DESCRIPTION_LENGTH = 100
+ALLOWED_FILE_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -29,6 +29,18 @@ def json_response(data: dict, status_code: int = 200) -> func.HttpResponse:
         status_code=status_code,
     )
 
+# Return a consistent API error response.
+def error_response(code: str, message: str, status_code: int) -> func.HttpResponse:
+    return json_response(
+        {
+            "success": False,
+            "error": {
+                "code": code,
+                "message": message,
+            },
+        },
+        status_code=status_code,
+    )
 
 # Check whether the Azure Function API is running.
 @app.route(route="health", methods=["GET"])
@@ -65,9 +77,12 @@ def get_request_data(req: func.HttpRequest) -> tuple[str, bytes, str]:
 
     # Handle JSON requests used for local API testing.
     try:
-        body = req.get_json() or {}
-    except ValueError:
-        body = {}
+       body = req.get_json() or {}
+    except ValueError as exc:
+       raise ValueError("Invalid JSON request body.") from exc
+
+    if not isinstance(body, dict):
+      raise ValueError("JSON request body must be an object.")
 
     filename = body.get("filename", "resume.txt")
     resume_text = body.get("resume_text", "")
@@ -87,30 +102,25 @@ def get_request_data(req: func.HttpRequest) -> tuple[str, bytes, str]:
 
 
 # Validate uploaded resume data and job-description input.
-def validate_request(
-    filename: str,
-    file_bytes: bytes,
-    job_description: str,
-) -> None:
-    if not filename:
+def validate_request(filename: str, file_bytes: bytes, job_description: str) -> None:
+    if not isinstance(filename, str) or not filename.strip():
         raise ValueError("Resume filename is required.")
 
-    if not file_bytes:
+    if not isinstance(file_bytes, bytes) or not file_bytes:
         raise ValueError("Resume file is empty.")
 
     if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-        raise ValueError(
-            "Resume file is too large. Maximum size is 5 MB."
-        )
+        raise ValueError("Resume file is too large. Maximum size is 5 MB.")
 
-    if not job_description.strip():
+    extension = Path(filename).suffix.lower()
+    if extension not in ALLOWED_FILE_EXTENSIONS:
+        raise ValueError("Unsupported resume file type. Allowed types are PDF, DOCX, and TXT.")
+
+    if not isinstance(job_description, str) or not job_description.strip():
         raise ValueError("Job description is required.")
 
     if len(job_description.strip()) < MIN_JOB_DESCRIPTION_LENGTH:
-        raise ValueError(
-            "Job description is too short for reliable matching. "
-            "Please provide the complete job description."
-        )
+        raise ValueError("Job description is too short for reliable matching. Please provide the complete job description.")
 
 
 # Run Azure NLP without allowing a cloud-service failure to stop core analysis.
@@ -166,24 +176,12 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
 
         # Evaluate ATS-related resume quality.
         ats = analyze_ats(resume_text, sections)
-        quality_result = calculate_resume_quality(
-            resume,
-            ats,
-            sections,
-        )
+        quality_result = calculate_resume_quality(resume, ats, sections)
         resume_quality = quality_result["score"]
         quality_breakdown = quality_result["breakdown"]
 
         # Generate resume strengths and improvement recommendations.
-        (
-            resume_strengths,
-            resume_recommendations,
-        ) = generate_resume_recommendations(
-            resume,
-            resume_quality,
-            quality_breakdown,
-            ats,
-        )
+        ( resume_strengths, resume_recommendations) = generate_resume_recommendations( resume, resume_quality, quality_breakdown, ats)
 
         # Analyze the job description using deterministic rules.
         jd = analyze_jd(job_description)
@@ -241,7 +239,10 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
                 "score_explanations": jd_match.get("score_explanations", {}),
                 "recommendations": jd_recommendations,
                 },
-            "azure_ai": {"resume": resume_azure, "job_description": jd_azure,},
+            "azure_ai": {
+                "resume": resume_azure, 
+                "job_description": jd_azure,
+                },
         }
 
         return json_response(response)
@@ -249,21 +250,9 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError as exc:
         logging.warning("Validation error: %s", exc)
 
-        return json_response(
-            {
-                "success": False,
-                "error": str(exc),
-            },
-            status_code=400,
-        )
+        return error_response("VALIDATION_ERROR", str(exc), 400)
 
     except Exception:
         logging.exception("Resume analysis failed.")
 
-        return json_response(
-            {
-                "success": False,
-                "error": "Resume analysis failed.",
-            },
-            status_code=500,
-        )
+    return error_response("INTERNAL_ERROR", "Resume analysis failed.", 500)
