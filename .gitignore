@@ -27,3 +27,12 @@ local.settings.json
 
 .docs
 docs
+
+analysis-result.json
+
+backend-before-generalization/
+generalized-update/
+generalized-hotfix/
+*.zip
+
+local.settings.json
