@@ -4,77 +4,110 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Resume Analyzer</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
-    <header class="header">
-        <div class="container">
+    <div class="container">
+        <header>
             <h1>AI Resume Analyzer</h1>
-            <p>Analyze your resume and get structured insights, skills, strengths, and recommendations.</p>
-        </div>
-    </header>
+            <p>Analyze your resume against a specific job description.</p>
+        </header>
 
-    <main class="container">
-        <section class="upload-section">
+        <section class="analyzer-card">
             <h2>Analyze Your Resume</h2>
-            <p class="description">Upload your resume in PDF or TXT format.</p>
 
-            <div id="uploadArea" class="drop-zone">
-                <div class="upload-icon">↑</div>
-                <h3>Upload your resume</h3>
-                <p>Drag and drop your resume here or</p>
-
-                <label for="resumeFile" class="file-button">
-                    Choose File
-                </label>
-
-                <input type="file" id="resumeFile" accept=".pdf,.txt" hidden>
-
-                <p id="fileName" class="file-name">No file selected</p>
+            <div class="input-section">
+                <label for="resumeFile">Resume</label>
+                <div class="upload-area" id="uploadArea">
+                    <p>Upload your resume in PDF, DOCX, or TXT format.</p>
+                    <input type="file" id="resumeFile" accept=".pdf,.docx,.txt">
+                    <p id="fileName"></p>
+                </div>
             </div>
 
-            <button id="analyzeBtn" class="analyze-button" disabled>
-                Analyze Resume
-            </button>
-
-            <div id="loader" class="loading" style="display: none;">
-                <div class="spinner"></div>
-                <p>Analyzing your resume...</p>
+            <div class="input-section">
+                <label for="jobDescription">Job Description</label>
+                <textarea
+                    id="jobDescription"
+                    placeholder="Paste the job description here..."
+                    rows="10"
+                ></textarea>
             </div>
 
-            <div id="errorMessage" class="error" style="display: none;"></div>
+            <button id="analyzeBtn" disabled>Analyze Resume</button>
+            <div id="loader" class="loader hidden" role="status" aria-live="polite">Analyzing your resume and job description...</div>
+            <div id="errorMessage" class="error hidden" role="alert" aria-live="assertive"></div>
         </section>
 
-        <section id="results" class="results-section" style="display: none;">
-            <div class="results-header">
-                <h2>Analysis Results</h2>
-            </div>
+        <section id="results" class="results hidden">
+            <h2>Analysis Results</h2>
 
-            <div class="score-card">
-                <div>
-                    <h3>Resume Score</h3>
-                    <p>Overall resume quality</p>
+            <div class="score-grid">
+                <div class="score-card">
+                    <h3>Resume Quality</h3>
+                    <div class="score" id="resumeScore">0</div>
+                    <p>/ 100</p>
                 </div>
 
-                <div class="score">
-                    <span id="score">0</span>
-                    <small>/ 100</small>
+                <div class="score-card">
+                    <h3>ATS Compatibility</h3>
+                    <div class="score" id="atsScore">0</div>
+                    <p>/ 100</p>
+                </div>
+
+                <div class="score-card">
+                    <h3>JD Match</h3>
+                    <div class="score" id="jdMatchScore">0</div>
+                    <p>%</p>
                 </div>
             </div>
 
             <div class="result-card">
                 <h3>Candidate</h3>
-                <p id="candidateName">—</p>
+                <p id="candidateName"></p>
             </div>
 
             <div class="result-card">
-                <h3>Key Skills</h3>
-                <div id="skills" class="skills-container">—</div>
+                <h3>Matched Skills</h3>
+                <div id="matchedSkills" class="skill-list"></div>
+            </div>
+
+            <div class="result-card">
+                <h3>JD Skills Not Detected in Resume</h3>
+                <p class="section-note">
+                    These skills appear in the job description but were not detected in the resume. This does not necessarily mean you do not have these skills.
+                </p>
+                <div id="missingSkills" class="skill-list"></div>
+            </div>
+
+            <div class="result-card">
+                <h3>Experience Match</h3>
+                <p id="experienceMatch"></p>
+            </div>
+
+            <div class="result-card">
+                <h3>Role Match</h3>
+                <p id="roleMatch"></p>
+            </div>
+
+            <div class="result-card">
+                <h3>Keyword Match</h3>
+                <p id="keywordMatch"></p>
+            </div>
+
+            <div class="result-card">
+                <h3>Education Match</h3>
+                <p id="educationMatch"></p>
+            </div>
+
+            <div class="result-card">
+                <h3>Resume Skills</h3>
+                <div id="skills" class="skill-list"></div>
             </div>
 
             <div class="result-card">
                 <h3>Experience Summary</h3>
-                <p id="experience">—</p>
+                <p id="experience"></p>
             </div>
 
             <div class="result-card">
@@ -86,13 +119,34 @@
                 <h3>Recommendations</h3>
                 <ul id="recommendations"></ul>
             </div>
+
+            <div class="result-card">
+                <h3>Job-Specific Recommendations</h3>
+                <ul id="jobRecommendations"></ul>
+            </div>
+
+            <div class="result-card">
+                <h3>Azure AI Insights</h3>
+                <p class="section-note">
+                    NLP insights are supplementary and do not directly determine the JD Match score.
+                </p>
+
+                <h4>Resume Key Phrases</h4>
+                <div id="resumeKeyPhrases" class="skill-list"></div>
+
+                <h4>Job Description Key Phrases</h4>
+                <div id="jdKeyPhrases" class="skill-list"></div>
+
+                <h4>Detected Resume Entities</h4>
+                <ul id="resumeEntities"></ul>
+            </div>
+
+            <p class="analysis-disclaimer">
+                This analysis is an automated resume-to-job comparison intended to support resume improvement. Scores are estimates and should not be treated as hiring decisions.
+            </p>
         </section>
-    </main>
+    </div>
 
-    <footer>
-        <p>AI Resume Analyzer | Built with Azure</p>
-    </footer>
-
-    <script src="script.js"></script>
+    <script src="script.js?v=4"></script>
 </body>
 </html>

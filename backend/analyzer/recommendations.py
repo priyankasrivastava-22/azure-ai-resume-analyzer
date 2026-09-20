@@ -109,7 +109,7 @@ def generate_jd_recommendations(resume, jd, jd_match):
             f"The JD asks for {experience['required_years']:g}+ years, "
             f"while approximately {experience['resume_years']:g} years "
             "were identified. Do not inflate the number; emphasize the "
-            "most relevant engineering and production experience."
+            "most relevant professional experience."
         )
 
     # Report preferred skill gaps.
@@ -151,15 +151,17 @@ def generate_jd_recommendations(resume, jd, jd_match):
                 f"{label}: none of the accepted alternatives were identified."
             )
 
-    # Report role alignment issues.
-    if jd_match.get("role_match", {}).get("score", 100) < 70:
+    # Report role alignment issues only when a role score is measurable.
+    role_score = jd_match.get("role_match", {}).get("score")
+    if role_score is not None and role_score < 70:
         recommendations.append(
             "The resume's role positioning could be closer to the target role. "
             "Use the job's terminology where it truthfully reflects your experience."
         )
 
-    # Report responsibility and keyword alignment issues.
-    if jd_match.get("keyword_match", 100) < 70:
+    # Report responsibility alignment issues only when a score is measurable.
+    keyword_score = jd_match.get("keyword_match")
+    if keyword_score is not None and keyword_score < 70:
         recommendations.append(
             "Several JD responsibilities are not clearly reflected in the resume. "
             "Add relevant responsibilities using the employer's terminology "

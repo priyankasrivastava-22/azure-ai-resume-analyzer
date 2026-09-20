@@ -11,6 +11,7 @@ SKILL_ALIASES = {
     "C++": ["c++", "cpp"],
     "C#": ["c#", "c sharp", "csharp"],
     "PowerShell": ["powershell", "pwsh"],
+    "Bash": ["bash", "bash scripting", "shell scripting", "shell script"],
     "KQL": ["kql", "kusto", "kusto query language"],
     "SQL": ["sql"],
     "PL/SQL": ["pl/sql", "plsql"],
@@ -154,7 +155,54 @@ def extract_skills(text: str) -> List[str]:
     for skill, aliases in SKILL_ALIASES.items():
         if any(term_in_text(alias, normalized) for alias in aliases):
             found.append(skill)
-    return sorted(set(found))
+    return sorted(set(found), key=str.lower)
+
+
+# Extract explicit skills from the resume's Skills section without relying on a fixed domain catalogue.
+def extract_explicit_skill_terms(skills_text: str) -> List[str]:
+    if not skills_text:
+        return []
+
+    blocked = {
+        "skills", "technical skills", "core skills", "technologies", "technical expertise",
+        "professional skills", "tools", "platforms", "frameworks", "languages",
+    }
+    candidates = []
+
+    for raw_line in skills_text.splitlines():
+        line = raw_line.strip().lstrip("•●▪◦*- ")
+        if not line:
+            continue
+
+        # Drop category labels such as "Cloud & Infrastructure:" and keep the listed values.
+        if ":" in line:
+            _, line = line.split(":", 1)
+
+        for part in re.split(r"[,;|•]", line):
+            value = re.sub(r"\s+", " ", part).strip(" .:-")
+            normalized = value.lower()
+
+            if not value or normalized in blocked:
+                continue
+            if "@" in value or re.search(r"https?://|www\.", value, flags=re.I):
+                continue
+            if len(value) < 2 or len(value) > 60:
+                continue
+            if len(value.split()) > 7:
+                continue
+            if re.fullmatch(r"\d+(?:[./-]\d+)*", value):
+                continue
+
+            candidates.append(value)
+
+    result = []
+    seen = set()
+    for item in candidates:
+        key = normalize_text(item).lower()
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
 
 def extract_email(text: str) -> Optional[str]:
     match = re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", text or "", re.I)
@@ -480,7 +528,16 @@ def analyze_resume(text: str, sections: Optional[Dict[str, str]] = None) -> Dict
     if not experience_text:
         experience_text = ""
     combined_skill_text = f"{skills_text}\n{text}"
-    skills = extract_skills(combined_skill_text)
+    known_skills = extract_skills(combined_skill_text)
+    explicit_skills = extract_explicit_skill_terms(skills_text)
+
+    skills = []
+    seen_skills = set()
+    for skill in known_skills + explicit_skills:
+        key = normalize_text(skill).lower()
+        if key and key not in seen_skills:
+            seen_skills.add(key)
+            skills.append(skill)
     experience_entries = extract_experience_entries(experience_text)
     intervals = []
     for entry in experience_entries:
