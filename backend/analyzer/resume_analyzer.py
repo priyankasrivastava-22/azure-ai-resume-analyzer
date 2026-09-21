@@ -51,7 +51,7 @@ SKILL_ALIASES = {
     "Prometheus": ["prometheus"],
     "Grafana": ["grafana"],
     "Geneva": ["geneva monitoring", "geneva"],
-    "Power BI": ["power bi"],
+    "Power BI": ["power bi", "powerbi"],
     "Microsoft Fabric": ["microsoft fabric"],
     "ADF": ["azure data factory", "adf"],
     "Synapse": ["synapse", "azure synapse"],
