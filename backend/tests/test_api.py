@@ -203,3 +203,81 @@ def test_successful_api_does_not_require_live_azure():
         response = function_app.analyze(request)
 
     assert response.status_code == 200
+
+
+def test_validation_error_response_is_structured():
+    request = make_json_request(
+        {
+            "filename": "resume.txt",
+            "resume_text": "Python developer with Azure experience.",
+            "job_description": "too short",
+        }
+    )
+
+    response = function_app.analyze(request)
+    body = json.loads(response.get_body().decode("utf-8"))
+
+    assert response.status_code == 400
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert isinstance(body["error"]["message"], str)
+    assert body["error"]["message"]
+
+
+def test_internal_error_returns_safe_generic_message(monkeypatch):
+    valid_resume = """
+    PRIYA SHARMA
+
+    Email: priya@example.com
+    Phone: +91 9876543210
+
+    SUMMARY
+    Software Engineer with Python, Azure, Docker, Git and CI/CD experience.
+
+    SKILLS
+    Python, Azure, Docker, Git, SQL
+
+    EXPERIENCE
+    Software Engineer with three years of development experience.
+
+    EDUCATION
+    Bachelor of Computer Applications
+    """
+
+    valid_jd = (
+        "We are looking for a Software Engineer with Python, Azure, Docker, "
+        "Git, SQL, CI/CD, troubleshooting, application development, testing, "
+        "deployment, monitoring and software engineering experience."
+    )
+
+    request = make_json_request(
+        {
+            "filename": "resume.txt",
+            "resume_text": valid_resume,
+            "job_description": valid_jd,
+        }
+    )
+
+    def raise_internal_error(*args, **kwargs):
+        raise RuntimeError(
+            "INTERNAL_SECRET_DETAIL_SHOULD_NEVER_REACH_CLIENT"
+        )
+
+    monkeypatch.setattr(
+        function_app,
+        "analyze_resume",
+        raise_internal_error,
+    )
+
+    response = function_app.analyze(request)
+    body = json.loads(response.get_body().decode("utf-8"))
+
+    assert response.status_code == 500
+    assert body["success"] is False
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["message"] == "Resume analysis failed."
+
+    response_text = response.get_body().decode("utf-8")
+
+    assert "INTERNAL_SECRET_DETAIL_SHOULD_NEVER_REACH_CLIENT" not in response_text
+    assert "RuntimeError" not in response_text

@@ -16,6 +16,7 @@ from analyzer.scoring import calculate_jd_match, calculate_resume_quality
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 MIN_JOB_DESCRIPTION_LENGTH = 100
+MAX_JOB_DESCRIPTION_LENGTH = 50_000
 ALLOWED_FILE_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -101,10 +102,63 @@ def get_request_data(req: func.HttpRequest) -> tuple[str, bytes, str]:
     return filename, resume_text.encode("utf-8"), job_description
 
 
+def sanitize_filename(filename: str) -> str:
+    if not isinstance(filename, str):
+        raise ValueError("Resume filename must be a string.")
+
+    filename = filename.strip().replace("\x00", "")
+
+    # Remove any client-supplied directory path.
+    filename = filename.replace("\\", "/").split("/")[-1]
+
+    if not filename:
+        raise ValueError("Resume filename is required.")
+
+    return filename
+
+
+def sanitize_job_description(job_description: str) -> str:
+    if not isinstance(job_description, str):
+        raise ValueError("Job description must be a string.")
+
+    job_description = job_description.strip()
+
+    if not job_description:
+        raise ValueError("Job description is required.")
+
+    if len(job_description) < MIN_JOB_DESCRIPTION_LENGTH:
+        raise ValueError(
+            "Job description is too short for reliable matching. "
+            "Please provide the complete job description."
+        )
+
+    if len(job_description) > MAX_JOB_DESCRIPTION_LENGTH:
+        raise ValueError(
+            "Job description is too long. Maximum length is 50,000 characters."
+        )
+
+    return job_description
+
+
+def validate_file_signature(extension: str, file_bytes: bytes) -> None:
+    if extension == ".pdf":
+        if not file_bytes.startswith(b"%PDF-"):
+            raise ValueError("Uploaded file content does not match PDF format.")
+
+    elif extension == ".docx":
+        if not file_bytes.startswith(b"PK"):
+            raise ValueError("Uploaded file content does not match DOCX format.")
+
+    elif extension == ".txt":
+        try:
+            file_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Uploaded TXT file must contain valid UTF-8 text.") from exc
+
+
 # Validate uploaded resume data and job-description input.
 def validate_request(filename: str, file_bytes: bytes, job_description: str) -> None:
-    if not isinstance(filename, str) or not filename.strip():
-        raise ValueError("Resume filename is required.")
+    filename = sanitize_filename(filename)
 
     if not isinstance(file_bytes, bytes) or not file_bytes:
         raise ValueError("Resume file is empty.")
@@ -116,11 +170,9 @@ def validate_request(filename: str, file_bytes: bytes, job_description: str) -> 
     if extension not in ALLOWED_FILE_EXTENSIONS:
         raise ValueError("Unsupported resume file type. Allowed types are PDF, DOCX, and TXT.")
 
-    if not isinstance(job_description, str) or not job_description.strip():
-        raise ValueError("Job description is required.")
+    validate_file_signature(extension, file_bytes)
 
-    if len(job_description.strip()) < MIN_JOB_DESCRIPTION_LENGTH:
-        raise ValueError("Job description is too short for reliable matching. Please provide the complete job description.")
+    sanitize_job_description(job_description)
 
 
 # Run Azure NLP without allowing a cloud-service failure to stop core analysis.
@@ -155,6 +207,8 @@ def analyze(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Read and validate the incoming request.
         filename, file_bytes, job_description = get_request_data(req)
+        filename = sanitize_filename(filename)
+        job_description = sanitize_job_description(job_description)
         validate_request(filename, file_bytes, job_description)
 
         # Extract readable text and logical sections from the resume.
