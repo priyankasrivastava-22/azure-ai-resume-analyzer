@@ -185,7 +185,7 @@ async function analyzeResume() {
         let response;
 
         try {
-            response = await fetch("http://localhost:7071/api/analyze", {
+            response = await fetch("https://ai-resume-analyzer-api-ps.azurewebsites.net/api/analyze", {
                 method: "POST",
                 body: formData,
             });
